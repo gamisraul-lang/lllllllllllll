@@ -1,0 +1,17 @@
+
+package pkg2dlang;
+
+import javax.swing.JFrame;
+
+public class Main {
+
+    public static void main(String[] args) {
+      JFrame Window = new JFrame ();
+      Window.SetDefaultCloseOperation(JFrame.EXIT_ON_CLOSE ); 
+      Window.setTitle("lolgame bato ");
+      
+      Window.SetLocationRelativeTO(null);
+      Window.SetVisiblity(true);
+    }
+    
+}
