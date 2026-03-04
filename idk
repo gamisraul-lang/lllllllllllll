@@ -1,0 +1,210 @@
+package com.mycompany.iq_game;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.*;
+import javax.swing.Timer;
+
+public class Iq_game extends JFrame {
+    private CardLayout cardLayout = new CardLayout();
+    private JPanel mainPanel = new JPanel(cardLayout);
+    private Map<String, Integer> levels = new HashMap<>();
+    private Map<String, Integer> strikes = new HashMap<>(); // Tracks failures
+    private Map<String, Long> cooldowns = new HashMap<>(); // Tracks unlock time
+    private Random rand = new Random();
+    private boolean isPaused = false;
+    private volatile boolean stopSequence = false;
+
+    public Iq_game() {
+        setTitle("The Archivist's Breach: Neural Performance Suite");
+        setSize(550, 750);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        String[] cats = {"Verbal", "Spatial", "Memory", "Fluid", "Speed"};
+        for (String c : cats) {
+            levels.put(c, 1);
+            strikes.put(c, 0);
+            cooldowns.put(c, 0L);
+        }
+
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            if (e.getID() == KeyEvent.KEY_PRESSED && e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                if (!isPaused) showPauseMenu();
+                return true;
+            }
+            return false;
+        });
+
+        // Background timer to refresh the UI for cooldown countdowns
+        Timer uiTimer = new Timer(1000, e -> refreshMenu());
+        uiTimer.start();
+
+        refreshMenu();
+        add(mainPanel);
+        setVisible(true);
+    }
+
+    private void showPauseMenu() {
+        isPaused = true;
+        String[] options = {"Continue Playing", "Save & Return", "Main Menu"};
+        int choice = JOptionPane.showOptionDialog(this, 
+                "PAUSED: Neural Link Suspended", "Pause Menu", 
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, 
+                null, options, options[0]);
+
+        if (choice == 1 || choice == 2) { 
+            stopSequence = true; 
+            if (choice == 1) saveProgress();
+        }
+        isPaused = false;
+    }
+
+    private void saveProgress() {
+        JOptionPane.showMessageDialog(this, "Progress Saved. Returning to Dashboard.");
+    }
+
+    private void refreshMenu() {
+        SwingUtilities.invokeLater(() -> {
+            JPanel menu = new JPanel();
+            menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
+            menu.setBorder(BorderFactory.createEmptyBorder(20, 40, 20, 40));
+            menu.setBackground(new Color(245, 245, 250));
+
+            JLabel title = new JLabel("NEURAL PERFORMANCE DASHBOARD");
+            title.setFont(new Font("Monospaced", Font.BOLD, 22));
+            title.setAlignmentX(Component.CENTER_ALIGNMENT);
+            menu.add(title);
+            menu.add(Box.createRigidArea(new Dimension(0, 20)));
+
+            JPanel statsContainer = new JPanel(new GridLayout(5, 1, 5, 5));
+            statsContainer.setBorder(BorderFactory.createTitledBorder("Cognitive Indices"));
+            statsContainer.setBackground(Color.WHITE);
+
+            long now = System.currentTimeMillis();
+
+            for (String cat : new String[]{"Verbal", "Spatial", "Memory", "Fluid", "Speed"}) {
+                int lvl = levels.get(cat);
+                int iqScore = 80 + (lvl * 4);
+                int s = strikes.get(cat);
+                String status = (now < cooldowns.get(cat)) ? "[LOCKED]" : "Strikes: " + s + "/3";
+                
+                JLabel label = new JLabel(String.format(" %-8s | Lvl: %-2d | IQ: %d | %s", cat, lvl, iqScore, status));
+                label.setFont(new Font("Monospaced", Font.PLAIN, 13));
+                statsContainer.add(label);
+            }
+            menu.add(statsContainer);
+            menu.add(Box.createRigidArea(new Dimension(0, 30)));
+
+            for (String cat : new String[]{"Verbal", "Spatial", "Memory", "Fluid", "Speed"}) {
+                JButton btn = new JButton();
+                btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+                btn.setMaximumSize(new Dimension(350, 45));
+                
+                long cdLeft = (cooldowns.get(cat) - now) / 1000;
+
+                if (levels.get(cat) > 15) {
+                    btn.setText(cat + " COMPLETED");
+                    btn.setEnabled(false);
+                } else if (cdLeft > 0) {
+                    btn.setText(cat + " COOLDOWN (" + cdLeft + "s)");
+                    btn.setEnabled(false);
+                } else {
+                    btn.setText("ACCESS " + cat.toUpperCase() + " NODE");
+                    btn.addActionListener(e -> startContinuousTest(cat));
+                }
+                menu.add(btn);
+                menu.add(Box.createRigidArea(new Dimension(0, 10)));
+            }
+
+            mainPanel.removeAll();
+            mainPanel.add(menu, "Menu");
+            mainPanel.revalidate();
+            mainPanel.repaint();
+            cardLayout.show(mainPanel, "Menu");
+        });
+    }
+
+    private void startContinuousTest(String type) {
+        stopSequence = false;
+        new Thread(() -> {
+            while (!stopSequence && levels.get(type) <= 15) {
+                int currentLvl = levels.get(type);
+                boolean success = false;
+
+                if (type.equals("Verbal")) success = runVerbal(currentLvl);
+                else if (type.equals("Spatial")) success = runSpatial(currentLvl);
+                else if (type.equals("Memory")) success = runMemory(currentLvl);
+                else if (type.equals("Fluid")) success = runFluid(currentLvl);
+                else if (type.equals("Speed")) success = runSpeed(currentLvl);
+
+                if (stopSequence) break;
+
+                if (success) {
+                    levels.put(type, currentLvl + 1);
+                    strikes.put(type, 0); // Reset strikes on win
+                    if (levels.get(type) > 15) {
+                        JOptionPane.showMessageDialog(this, "MASTERY ACHIEVED: " + type);
+                        break;
+                    }
+                } else {
+                    int s = strikes.get(type) + 1;
+                    if (s >= 3) {
+                        JOptionPane.showMessageDialog(this, "NEURAL OVERLOAD: 3 consecutive failures.\n60-second cooldown initiated.");
+                        cooldowns.put(type, System.currentTimeMillis() + 60000); // 60s cooldown
+                        strikes.put(type, 0); // Reset strikes for after cooldown
+                        break;
+                    } else {
+                        strikes.put(type, s);
+                        JOptionPane.showMessageDialog(this, "INCORRECT. Strike " + s + "/3. Try again.");
+                        break;
+                    }
+                }
+            }
+            refreshMenu();
+        }).start();
+    }
+
+    // --- GAME MODULES ---
+
+    private boolean runVerbal(int lvl) {
+        String[][] words = {{"Hot", "Cold"}, {"Big", "Small"}, {"Fast", "Slow"}, {"Ancient", "Modern"}, {"Solid", "Liquid"}, {"Sharp", "Dull"}, {"Rich", "Poor"}, {"Hard", "Soft"}, {"Bright", "Dim"}, {"Wise", "Foolish"}, {"Candid", "Secretive"}, {"Pernicious", "Helpful"}, {"Ephemeral", "Lasting"}, {"Loquacious", "Quiet"}, {"Pragmatic", "Idealistic"}};
+        String ans = JOptionPane.showInputDialog(this, "Level " + lvl + ": Antonym of " + words[lvl-1][0]);
+        return ans != null && ans.equalsIgnoreCase(words[lvl-1][1]);
+    }
+
+    private boolean runSpatial(int lvl) {
+        String[] q = {"Rotate 'b' 180 deg", "Flip 'M' vertically", "Rotate 'p' 90 deg CW", "Sides in Heptagon?", "Edges in a Cube?", "Flip 'N' horiz.", "Right angle degrees?", "Circle minus 90?", "Pyramid vertices?", "X of (1,0) @ 180 deg", "Y of (0,1) @ 90 deg CW", "Octahedron faces?", "Z symmetry? (Y/N)", "Complement of 30?", "Sum of Triangle angles?"};
+        String[] a = {"q", "W", "d", "7", "12", "N", "90", "270", "5", "-1", "0", "8", "Y", "60", "180"};
+        String ans = JOptionPane.showInputDialog(this, "Level " + lvl + ": " + q[lvl-1]);
+        return ans != null && ans.equalsIgnoreCase(a[lvl-1]);
+    }
+
+    private boolean runMemory(int lvl) {
+        String seq = "";
+        for(int i=0; i < (3 + lvl); i++) seq += rand.nextInt(10);
+        JOptionPane.showMessageDialog(this, "MEMORIZE (Reverse order):\n" + seq);
+        String ans = JOptionPane.showInputDialog(this, "Input Sequence:");
+        return ans != null && new StringBuilder(seq).reverse().toString().equals(ans);
+    }
+
+    private boolean runFluid(int lvl) {
+        int goal = (lvl < 8) ? (lvl * 10) : (lvl * lvl);
+        String p = (lvl < 8) ? "0, "+lvl+", "+(lvl*2)+", "+(lvl*3)+", ?" : "1, 4, 9, 16, ?";
+        String ans = JOptionPane.showInputDialog(this, "Pattern: " + p);
+        return String.valueOf(goal).equals(ans);
+    }
+
+    private boolean runSpeed(int lvl) {
+        long limit = Math.max(400, 3200 - (lvl * 180));
+        String target = "X" + (1000 + rand.nextInt(8999));
+        long start = System.currentTimeMillis();
+        String ans = JOptionPane.showInputDialog(this, "Type FAST: " + target + "\nLimit: " + limit + "ms");
+        return target.equals(ans) && (System.currentTimeMillis() - start) < limit;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Iq_game());
+    }
+}
